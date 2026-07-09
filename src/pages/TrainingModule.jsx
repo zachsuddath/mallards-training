@@ -16,6 +16,10 @@ export default function TrainingModule() {
   const [quizAnswers, setQuizAnswers] = useState({})
   const [quizSubmitted, setQuizSubmitted] = useState({})
   const [quizScores, setQuizScores] = useState({})
+  const [pinUnlocked, setPinUnlocked] = useState(new Set())
+  const [pinInput, setPinInput] = useState({})
+  const [pinError, setPinError] = useState({})
+  const [pinLoading, setPinLoading] = useState({})
 
   useEffect(() => { loadModule() }, [moduleId])
 
@@ -71,9 +75,28 @@ export default function TrainingModule() {
     setQuizAnswers(a => ({ ...a, [itemId]: {} }))
     setQuizSubmitted(s => ({ ...s, [itemId]: false }))
     setQuizScores(sc => ({ ...sc, [itemId]: null }))
+    setPinUnlocked(s => { const n = new Set(s); n.delete(itemId); return n })
   }
 
-  if (loading) return <div className="empty-state"><div className="empty-state-icon">⏳</div>Loading module...</div>
+  async function verifyPin(itemId) {
+    const pin = pinInput[itemId] || ''
+    if (pin.length !== 4) { setPinError(e => ({ ...e, [itemId]: 'Enter a 4-digit PIN.' })); return }
+    setPinLoading(l => ({ ...l, [itemId]: true }))
+    setPinError(e => ({ ...e, [itemId]: '' }))
+    const { data, error } = await supabase.rpc('verify_manager_pin', {
+      p_location_id: profile.location_id,
+      p_pin: pin,
+    })
+    setPinLoading(l => ({ ...l, [itemId]: false }))
+    if (error || !data) {
+      setPinError(e => ({ ...e, [itemId]: 'Incorrect PIN. Ask your manager to try again.' }))
+    } else {
+      setPinUnlocked(s => new Set([...s, itemId]))
+      setPinInput(p => ({ ...p, [itemId]: '' }))
+    }
+  }
+
+  if (loading) return <div className="empty-state"><div className="empty-state-icon">&#x23F3;</div>Loading module...</div>
 
   const currentIdx = allModules.findIndex(m => m.id === moduleId)
   const prevModule = currentIdx > 0 ? allModules[currentIdx - 1] : null
@@ -85,14 +108,15 @@ export default function TrainingModule() {
   const videoItems = items.filter(i => i.type === 'video')
   const infoItems = items.filter(i => i.type === 'info')
   const quizItems = items.filter(i => i.type === 'quiz')
+  const needsPin = profile?.role === 'employee' && !!profile?.location_id
 
   return (
     <div>
-      <button className="btn btn-secondary btn-sm mb-24" onClick={() => navigate('/training')}>← Back to Training</button>
+      <button className="btn btn-secondary btn-sm mb-24" onClick={() => navigate('/training')}>Back to Training</button>
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ background: moduleComplete ? '#27AE60' : '#1B3A6B', color: 'white', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
-            {moduleComplete ? '✓' : currentIdx + 1}
+            {moduleComplete ? '&#x2713;' : currentIdx + 1}
           </div>
           <div>
             <div className="page-title">{module?.title}</div>
@@ -103,17 +127,15 @@ export default function TrainingModule() {
 
       {videoItems.length > 0 && (
         <div className="mb-24">
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>📹 Videos</div>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Videos</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {videoItems.map(item => (
               <div key={item.id} className="card">
                 <div className="card-header">
                   <div className="card-title">{item.title}</div>
-                  {!completedIds.has(item.id) ? (
-                    <button className="btn btn-sm btn-secondary" onClick={() => toggleItem(item.id)}>Mark Watched ✓</button>
-                  ) : (
-                    <span className="badge badge-green">✓ Watched</span>
-                  )}
+                  {!completedIds.has(item.id)
+                    ? <button className="btn btn-sm btn-secondary" onClick={() => toggleItem(item.id)}>Mark Watched</button>
+                    : <span className="badge badge-green">Watched</span>}
                 </div>
                 <div className="card-body">
                   <div className="video-wrapper">
@@ -121,8 +143,8 @@ export default function TrainingModule() {
                       <iframe src={item.content} title={item.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
                     ) : (
                       <div className="video-placeholder">
-                        <div className="video-placeholder-icon">▶</div>
-                        <div className="video-placeholder-text">Video coming soon — add your YouTube embed URL in Admin</div>
+                        <div className="video-placeholder-icon">&#x25BA;</div>
+                        <div className="video-placeholder-text">Video coming soon</div>
                       </div>
                     )}
                   </div>
@@ -135,7 +157,7 @@ export default function TrainingModule() {
 
       {infoItems.length > 0 && (
         <div className="mb-24">
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>📖 Key Info</div>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Key Info</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {infoItems.map(item => (
               <div key={item.id} className="card">
@@ -157,21 +179,49 @@ export default function TrainingModule() {
         const score = quizScores[item.id] || null
         const isComplete = completedIds.has(item.id)
         const allAnswered = questions.length > 0 && questions.every((_, i) => answers[i] !== undefined)
+        const unlocked = !needsPin || pinUnlocked.has(item.id) || isComplete
 
         return (
           <div key={item.id} className="mb-24">
             <div className="card">
               <div className="card-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 20 }}>🧠</span>
+                  <span style={{ fontSize: 20 }}>&#x1F9E0;</span>
                   <div>
                     <div className="card-title">{item.title}</div>
-                    <div style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>{questions.length} questions · 80% to pass</div>
+                    <div style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>{questions.length} questions &middot; 80% to pass</div>
                   </div>
                 </div>
-                {isComplete && <span className="badge badge-green">✓ Passed</span>}
+                {isComplete && <span className="badge badge-green">Passed</span>}
               </div>
-              {!submitted ? (
+
+              {!unlocked && (
+                <div style={{ padding: '24px', textAlign: 'center', borderTop: '1px solid #E5E7EB' }}>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>&#x1F512;</div>
+                  <div style={{ fontWeight: 600, fontSize: 15, color: '#1B3A6B', marginBottom: 4 }}>Manager PIN Required</div>
+                  <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+                    Ask your manager to enter their PIN to unlock this quiz.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center' }}>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={4}
+                      placeholder="&#x2022;&#x2022;&#x2022;&#x2022;"
+                      value={pinInput[item.id] || ''}
+                      onChange={e => setPinInput(p => ({ ...p, [item.id]: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                      onKeyDown={e => e.key === 'Enter' && verifyPin(item.id)}
+                      style={{ width: 100, textAlign: 'center', letterSpacing: 6, fontSize: 18, padding: '8px 12px', border: '2px solid #E5E7EB', borderRadius: 8, outline: 'none' }}
+                    />
+                    <button className="btn btn-primary" onClick={() => verifyPin(item.id)} disabled={pinLoading[item.id]}>
+                      {pinLoading[item.id] ? 'Checking...' : 'Unlock'}
+                    </button>
+                  </div>
+                  {pinError[item.id] && <div style={{ marginTop: 10, fontSize: 13, color: '#C0392B' }}>{pinError[item.id]}</div>}
+                </div>
+              )}
+
+              {unlocked && !submitted && (
                 <div style={{ padding: '8px 24px 24px' }}>
                   {questions.map((q, qIdx) => (
                     <div key={qIdx} className="quiz-question">
@@ -190,12 +240,14 @@ export default function TrainingModule() {
                   <button className="btn btn-primary" disabled={!allAnswered} onClick={() => submitQuiz(item)} style={{ marginTop: 8, opacity: allAnswered ? 1 : 0.5 }}>Submit Quiz</button>
                   {!allAnswered && <span style={{ fontSize: 13, color: '#6B7280', marginLeft: 12 }}>Answer all questions to submit</span>}
                 </div>
-              ) : (
+              )}
+
+              {unlocked && submitted && (
                 <div style={{ padding: '8px 24px 24px' }}>
                   <div className={`quiz-result ${score?.passed ? 'quiz-result-pass' : 'quiz-result-fail'}`}>
-                    <div style={{ fontSize: 22, marginBottom: 6 }}>{score?.passed ? '🎉' : '📚'}</div>
+                    <div style={{ fontSize: 22, marginBottom: 6 }}>{score?.passed ? '&#x1F389;' : '&#x1F4DA;'}</div>
                     <div style={{ fontWeight: 700, fontSize: 16 }}>{score?.passed ? 'You passed!' : 'Not quite — keep studying'}</div>
-                    <div style={{ fontSize: 14, marginTop: 4 }}>Score: {score?.correct}/{score?.total} · {score?.pct}%{!score?.passed && <span style={{ color: '#C0392B' }}> (80% required)</span>}</div>
+                    <div style={{ fontSize: 14, marginTop: 4 }}>Score: {score?.correct}/{score?.total} &middot; {score?.pct}%{!score?.passed && <span style={{ color: '#C0392B' }}> (80% required)</span>}</div>
                   </div>
                   {questions.map((q, qIdx) => {
                     const selected = answers[qIdx]
@@ -203,8 +255,8 @@ export default function TrainingModule() {
                     const isRight = selected === correct
                     return (
                       <div key={qIdx} className={`quiz-review-item ${isRight ? 'correct' : 'incorrect'}`}>
-                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{isRight ? '✓' : '✗'} {q.question}</div>
-                        {!isRight && <div style={{ fontSize: 13, color: '#27AE60' }}>Correct answer: <strong>{q.options[correct]}</strong></div>}
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{isRight ? '&#x2713;' : '&#x2717;'} {q.question}</div>
+                        {!isRight && <div style={{ fontSize: 13, color: '#27AE60' }}>Correct: <strong>{q.options[correct]}</strong></div>}
                         {!isRight && selected !== undefined && <div style={{ fontSize: 13, color: '#C0392B' }}>Your answer: {q.options[selected]}</div>}
                       </div>
                     )
@@ -221,7 +273,7 @@ export default function TrainingModule() {
         <div>
           <div className="card">
             <div className="card-header">
-              <div className="card-title">✅ Checklist</div>
+              <div className="card-title">Checklist</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 13, color: '#6B7280' }}>{completedChecklist}/{checklistItems.length} complete</span>
                 {moduleComplete && <span className="badge badge-green">Module Complete!</span>}
@@ -234,7 +286,7 @@ export default function TrainingModule() {
               {checklistItems.map(item => (
                 <div key={item.id} className="checklist-item">
                   <div className={`check-box ${completedIds.has(item.id) ? 'checked' : ''}`} onClick={() => toggleItem(item.id)}>
-                    {completedIds.has(item.id) && '✓'}
+                    {completedIds.has(item.id) && '&#x2713;'}
                   </div>
                   <div className={`checklist-text ${completedIds.has(item.id) ? 'done' : ''}`}>{item.title}</div>
                 </div>
@@ -243,7 +295,7 @@ export default function TrainingModule() {
             {moduleComplete && (
               <div style={{ padding: '16px 24px', borderTop: '1px solid #E5E7EB' }}>
                 <div style={{ background: 'rgba(39,174,96,0.08)', border: '1px solid rgba(39,174,96,0.3)', borderRadius: 8, padding: '14px 16px', color: '#27AE60', fontWeight: 600, fontSize: 14 }}>
-                  🎉 Nice work! You've completed this module.{nextModule && ' Move on to the next one when you are ready.'}
+                  Nice work! You have completed this module.{nextModule && ' Move on to the next one when you are ready.'}
                 </div>
               </div>
             )}
@@ -252,10 +304,10 @@ export default function TrainingModule() {
       )}
 
       <div className="flex-between mt-24">
-        <div>{prevModule && <button className="btn btn-secondary" onClick={() => navigate(`/training/module/${prevModule.id}`)}>← {prevModule.title}</button>}</div>
+        <div>{prevModule && <button className="btn btn-secondary" onClick={() => navigate(`/training/module/${prevModule.id}`)}>&#x2190; {prevModule.title}</button>}</div>
         <div>
-          {nextModule && <button className="btn btn-primary" onClick={() => navigate(`/training/module/${nextModule.id}`)}>{nextModule.title} →</button>}
-          {!nextModule && moduleComplete && <button className="btn btn-success" onClick={() => navigate('/training')}>🎉 Back to Dashboard</button>}
+          {nextModule && <button className="btn btn-primary" onClick={() => navigate(`/training/module/${nextModule.id}`)}>{nextModule.title} &#x2192;</button>}
+          {!nextModule && moduleComplete && <button className="btn btn-success" onClick={() => navigate('/training')}>Back to Dashboard</button>}
         </div>
       </div>
     </div>

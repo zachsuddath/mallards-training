@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Login() {
@@ -27,7 +27,7 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo">
-          <div style={{ fontSize: 48 }}>🦆</div>
+          <div style={{ fontSize: 48 }}>&#x1F986;</div>
         </div>
         <div className="login-title">Mallards Training</div>
         <div className="login-sub">Sign in to access your training portal</div>
@@ -53,7 +53,7 @@ export default function Login() {
             <input
               type="password"
               className="form-input"
-              placeholder="••••••••"
+              placeholder="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
@@ -61,12 +61,13 @@ export default function Login() {
           </div>
 
           <button type="submit" className="btn btn-primary" disabled={loading} style={{ marginTop: 8 }}>
-            {loading ? 'Signing in...' : 'Sign In →'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
 
         <p style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: '#6B7280' }}>
-          Need an account? Ask your manager to set you up.
+          New employee?{' '}
+          <Link to="/signup" style={{ color: '#1B3A6B', fontWeight: 600 }}>Request access</Link>
         </p>
       </div>
     </div>
