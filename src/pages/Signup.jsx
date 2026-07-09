@@ -26,18 +26,27 @@ export default function Signup() {
       password: form.password,
     })
 
-    if (signUpErr) { setError(signUpErr.message); setLoading(false); return }
+    if (signUpErr) {
+      setError(signUpErr.message || 'Sign up failed. Please try again.')
+      setLoading(false); return
+    }
 
     const userId = data.user?.id
-    if (userId) {
-      const { error: profileErr } = await supabase.from('profiles').upsert({
-        id: userId,
-        full_name: form.full_name,
-        role: 'employee',
-        location_id: form.location_id,
-        status: 'pending',
-      })
-      if (profileErr) { setError(profileErr.message); setLoading(false); return }
+    if (!userId) {
+      setError('Account could not be created. Please try again.')
+      setLoading(false); return
+    }
+
+    const { error: profileErr } = await supabase.from('profiles').upsert({
+      id: userId,
+      full_name: form.full_name,
+      role: 'employee',
+      location_id: form.location_id,
+      status: 'pending',
+    })
+    if (profileErr) {
+      setError(profileErr.message || profileErr.code || JSON.stringify(profileErr))
+      setLoading(false); return
     }
 
     // Sign out immediately — they can't use the app until approved

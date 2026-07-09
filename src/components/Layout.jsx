@@ -16,7 +16,7 @@ export default function Layout() {
   navItems.push({ icon: 'train', label: 'My Training', path: '/training' })
   navItems.push({ icon: 'menu', label: 'Menu', path: '/menu' })
   if (profile?.role === 'manager' || profile?.role === 'admin') {
-    navItems.push({ icon: 'team', label: 'Team Progress', path: '/manager' })
+    navItems.push({ icon: 'team', label: 'Manager Dashboard', path: '/manager' })
   }
   if (profile?.role === 'admin') {
     navItems.push({ icon: 'admin', label: 'Manage Content', path: '/admin' })
