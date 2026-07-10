@@ -27,7 +27,14 @@ export default function Signup() {
     })
 
     if (signUpErr) {
-      setError(signUpErr.message || 'Sign up failed. Please try again.')
+      const raw = signUpErr.message || ''
+      const isGarbled = !raw || raw === '{}' || raw === 'null' || raw.trim() === ''
+      setError(isGarbled
+        ? 'Sign up is temporarily unavailable. Please try again in a few minutes.'
+        : raw === 'User already registered'
+          ? 'An account with this email already exists. Try signing in instead.'
+          : raw
+      )
       setLoading(false); return
     }
 
