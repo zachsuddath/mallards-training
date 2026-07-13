@@ -143,18 +143,38 @@ export default function TrainingModule() {
     }
   }
 
+  async function signOffValidation(itemId, pin) {
+    setPinLoading(l => ({ ...l, [itemId]: true }))
+    setPinError(e => ({ ...e, [itemId]: '' }))
+    const { data, error } = await supabase.rpc('sign_off_validation', {
+      p_location_id: profile.location_id,
+      p_pin: pin,
+      p_employee_id: profile.id,
+      p_item_id: itemId,
+    })
+    setPinLoading(l => ({ ...l, [itemId]: false }))
+    if (error || !data?.success) {
+      setPinError(e => ({ ...e, [itemId]: 'Incorrect PIN. Ask your manager to try again.' }))
+    } else {
+      setCompletedIds(prev => new Set([...prev, itemId]))
+    }
+  }
+
   if (loading) return <div className="empty-state"><div className="empty-state-icon">&#x23F3;</div>Loading module...</div>
 
   const currentIdx = allModules.findIndex(m => m.id === moduleId)
   const prevModule = currentIdx > 0 ? allModules[currentIdx - 1] : null
   const nextModule = currentIdx < allModules.length - 1 ? allModules[currentIdx + 1] : null
   const checklistItems = items.filter(i => i.type === 'checklist')
+  const completableItems = items.filter(i => ['checklist', 'quiz', 'validation'].includes(i.type))
   const completedChecklist = checklistItems.filter(i => completedIds.has(i.id)).length
-  const moduleComplete = checklistItems.length > 0 && completedChecklist === checklistItems.length
+  const completedAll = completableItems.filter(i => completedIds.has(i.id)).length
+  const moduleComplete = completableItems.length > 0 && completedAll === completableItems.length
   const pct = checklistItems.length > 0 ? Math.round((completedChecklist / checklistItems.length) * 100) : 0
   const videoItems = items.filter(i => i.type === 'video')
   const infoItems = items.filter(i => i.type === 'info')
   const quizItems = items.filter(i => i.type === 'quiz')
+  const validationItems = items.filter(i => i.type === 'validation')
   const needsPin = profile?.role === 'employee' && !!profile?.location_id
 
   return (
@@ -304,6 +324,45 @@ export default function TrainingModule() {
           </div>
         )
       })}
+
+      {validationItems.length > 0 && (
+        <div className="mb-24">
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Manager Sign-offs</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {validationItems.map(item => {
+              const done = completedIds.has(item.id)
+              return (
+                <div key={item.id} className="card">
+                  <div className="card-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: 20 }}>✍️</span>
+                      <div>
+                        <div className="card-title">{item.title}</div>
+                        {item.content && <div style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }}>{item.content}</div>}
+                      </div>
+                    </div>
+                    {done && <span className="badge badge-green">Signed off ✓</span>}
+                  </div>
+                  {!done && (
+                    <div style={{ padding: '24px', textAlign: 'center', borderTop: '1px solid #E5E7EB' }}>
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>✍️</div>
+                      <div style={{ fontWeight: 600, fontSize: 15, color: '#1B3A6B', marginBottom: 4 }}>Manager Sign-off Required</div>
+                      <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 20 }}>
+                        Hand the device to your manager — they tap their PIN to confirm you've completed this.
+                      </div>
+                      <PinPad
+                        onSubmit={pin => signOffValidation(item.id, pin)}
+                        error={pinError[item.id]}
+                        loading={pinLoading[item.id]}
+                      />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {checklistItems.length > 0 && (
         <div>
