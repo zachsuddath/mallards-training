@@ -3,6 +3,7 @@ import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
 import { supabase } from '../lib/supabase'
 import { useSettings } from '../contexts/SettingsContext'
+import { useAuth } from '../contexts/AuthContext'
 
 // SETTINGS TAB
 function SettingsTab() {
@@ -60,7 +61,7 @@ function SettingsTab() {
               <div style={{ width: 80, height: 80, border: '2px dashed #D1D5DB', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F9FAFB', overflow: 'hidden' }}>
                 {settings.logo_url
                   ? <img src={settings.logo_url} alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  : <span style={{ fontSize: 32 }}>duck</span>
+                  : <span style={{ fontSize: 32 }}>🦆</span>
                 }
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -132,8 +133,8 @@ function SettingsTab() {
 }
 
 // INVITE MODAL
-function InviteModal({ tracks, onClose, onSave }) {
-  const [form, setForm] = useState({ full_name: '', email: '', role: 'employee', track_id: '' })
+function InviteModal({ tracks, locations, onClose, onSave }) {
+  const [form, setForm] = useState({ full_name: '', email: '', role: 'employee', track_id: '', location_id: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -154,8 +155,11 @@ function InviteModal({ tracks, onClose, onSave }) {
       options: { data: { full_name: form.full_name.trim(), role: form.role } },
     })
     if (signUpError) { setSaving(false); setError(fmtErr(signUpError)); return }
-    if (data.user && form.track_id) {
-      await supabase.from('profiles').update({ track_id: form.track_id }).eq('id', data.user.id)
+    if (data.user) {
+      const profileUpdate = { status: 'active' }
+      if (form.track_id) profileUpdate.track_id = form.track_id
+      if (form.location_id) profileUpdate.location_id = form.location_id
+      await supabase.from('profiles').update(profileUpdate).eq('id', data.user.id)
     }
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(form.email.trim(), { redirectTo: window.location.origin })
     setSaving(false)
@@ -166,9 +170,9 @@ function InviteModal({ tracks, onClose, onSave }) {
   if (success) return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header"><div className="modal-title">Invite Sent</div><button className="close-btn" onClick={onClose}>X</button></div>
+        <div className="modal-header"><div className="modal-title">Invite Sent</div><button className="close-btn" onClick={onClose}>✕</button></div>
         <div className="modal-body" style={{ textAlign: 'center', padding: '32px 24px' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>Email sent</div>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>✉️</div>
           <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>{form.full_name} has been invited</div>
           <div style={{ color: '#6B7280', fontSize: 14 }}>An email was sent to <strong>{form.email}</strong> with a link to set their password.</div>
         </div>
@@ -180,11 +184,17 @@ function InviteModal({ tracks, onClose, onSave }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header"><div className="modal-title">Invite New Employee</div><button className="close-btn" onClick={onClose}>X</button></div>
+        <div className="modal-header"><div className="modal-title">Invite New Employee</div><button className="close-btn" onClick={onClose}>✕</button></div>
         <div className="modal-body">
           {error && <div className="error-msg">{error}</div>}
           <div className="form-group"><label className="form-label">Full Name</label><input className="form-input" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="e.g. Jane Smith" /></div>
           <div className="form-group"><label className="form-label">Email</label><input className="form-input" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="jane@email.com" /></div>
+          <div className="form-group"><label className="form-label">Location</label>
+            <select className="form-select" value={form.location_id} onChange={e => setForm(f => ({ ...f, location_id: e.target.value }))}>
+              <option value="">-- Select Location --</option>
+              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
           <div className="form-group"><label className="form-label">Role</label>
             <select className="form-select" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
               <option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option>
@@ -210,14 +220,26 @@ function InviteModal({ tracks, onClose, onSave }) {
 }
 
 // EMPLOYEE MODAL
-function EmployeeModal({ employee, tracks, onClose, onSave }) {
-  const [form, setForm] = useState({ full_name: employee?.full_name || '', role: employee?.role || 'employee', track_id: employee?.track_id || '' })
+function EmployeeModal({ employee, tracks, locations, onClose, onSave }) {
+  const [form, setForm] = useState({
+    full_name: employee?.full_name || '',
+    role: employee?.role || 'employee',
+    track_id: employee?.track_id || '',
+    location_id: employee?.location_id || '',
+    status: employee?.status || 'active',
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   async function handleSave() {
     setSaving(true); setError('')
-    const { error } = await supabase.from('profiles').update({ full_name: form.full_name, role: form.role, track_id: form.track_id || null }).eq('id', employee.id)
+    const { error } = await supabase.from('profiles').update({
+      full_name: form.full_name,
+      role: form.role,
+      track_id: form.track_id || null,
+      location_id: form.location_id || null,
+      status: form.status,
+    }).eq('id', employee.id)
     setSaving(false)
     if (error) setError(error.message)
     else { onSave(); onClose() }
@@ -226,13 +248,26 @@ function EmployeeModal({ employee, tracks, onClose, onSave }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header"><div className="modal-title">Edit Employee</div><button className="close-btn" onClick={onClose}>X</button></div>
+        <div className="modal-header"><div className="modal-title">Edit Employee</div><button className="close-btn" onClick={onClose}>✕</button></div>
         <div className="modal-body">
           {error && <div className="error-msg">{error}</div>}
           <div className="form-group"><label className="form-label">Full Name</label><input className="form-input" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} /></div>
+          <div className="form-group"><label className="form-label">Location</label>
+            <select className="form-select" value={form.location_id} onChange={e => setForm(f => ({ ...f, location_id: e.target.value }))}>
+              <option value="">-- No Location --</option>
+              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
           <div className="form-group"><label className="form-label">Role</label>
             <select className="form-select" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
               <option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option>
+            </select>
+          </div>
+          <div className="form-group"><label className="form-label">Status</label>
+            <select className="form-select" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+              <option value="inactive">Inactive</option>
             </select>
           </div>
           <div className="form-group"><label className="form-label">Training Track</label>
@@ -304,7 +339,7 @@ function ItemModal({ item, moduleId, onClose, onSave }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={{ maxWidth: 640, maxHeight: '88vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header"><div className="modal-title">{item?.id ? 'Edit' : 'Add'} Item</div><button className="close-btn" onClick={onClose}>X</button></div>
+        <div className="modal-header"><div className="modal-title">{item?.id ? 'Edit' : 'Add'} Item</div><button className="close-btn" onClick={onClose}>✕</button></div>
         <div className="modal-body">
           {error && <div className="error-msg">{error}</div>}
           <div className="form-group"><label className="form-label">Type</label>
@@ -336,7 +371,7 @@ function ItemModal({ item, moduleId, onClose, onSave }) {
             <div className="form-group">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <label className="form-label" style={{ margin: 0 }}>Questions</label>
-                <span style={{ fontSize: 12, color: '#6B7280' }}>Pass score: 80% - employees can retake until they pass</span>
+                <span style={{ fontSize: 12, color: '#6B7280' }}>Pass score: 80% — employees can retake until they pass</span>
               </div>
               {quizQuestions.map((q, qIdx) => (
                 <div key={qIdx} className="quiz-builder-question">
@@ -391,7 +426,7 @@ function ModuleModal({ module, trackId, onClose, onSave }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header"><div className="modal-title">{module?.id ? 'Edit' : 'Add'} Module</div><button className="close-btn" onClick={onClose}>X</button></div>
+        <div className="modal-header"><div className="modal-title">{module?.id ? 'Edit' : 'Add'} Module</div><button className="close-btn" onClick={onClose}>✕</button></div>
         <div className="modal-body">
           {error && <div className="error-msg">{error}</div>}
           <div className="form-group"><label className="form-label">Module Title</label><input className="form-input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Server Training" /></div>
@@ -409,8 +444,13 @@ function ModuleModal({ module, trackId, onClose, onSave }) {
 
 // MAIN ADMIN PANEL
 export default function AdminPanel() {
+  const { profile } = useAuth()
+  const isAdmin = profile?.role === 'admin'
+  const isManager = profile?.role === 'manager'
+
   const [tab, setTab] = useState('content')
   const [tracks, setTracks] = useState([])
+  const [locations, setLocations] = useState([])
   const [selectedTrack, setSelectedTrack] = useState(null)
   const [modules, setModules] = useState([])
   const [selectedModule, setSelectedModule] = useState(null)
@@ -420,10 +460,15 @@ export default function AdminPanel() {
   const [modal, setModal] = useState(null)
   const [editTarget, setEditTarget] = useState(null)
 
-  useEffect(() => { loadTracks() }, [])
+  useEffect(() => { loadTracks(); loadLocations() }, [])
   useEffect(() => { if (selectedTrack) loadModules(selectedTrack.id) }, [selectedTrack])
   useEffect(() => { if (selectedModule) loadItems(selectedModule.id) }, [selectedModule])
   useEffect(() => { if (tab === 'employees') loadEmployees() }, [tab])
+
+  async function loadLocations() {
+    const { data } = await supabase.from('locations').select('*').order('name')
+    setLocations(data || [])
+  }
 
   async function loadTracks() {
     const { data } = await supabase.from('tracks').select('*').order('name')
@@ -440,8 +485,19 @@ export default function AdminPanel() {
     setModuleItems(data || [])
   }
   async function loadEmployees() {
-    const { data } = await supabase.from('profiles').select('*, tracks(name)').order('full_name')
+    let query = supabase.from('profiles').select('*, tracks(name), locations(name)').order('full_name')
+    // Managers only see their own location
+    if (isManager && profile?.location_id) {
+      query = query.eq('location_id', profile.location_id)
+    }
+    const { data } = await query
     setEmployees(data || [])
+  }
+  async function approveEmployee(id, trackId) {
+    const update = { status: 'active' }
+    if (trackId) update.track_id = trackId
+    await supabase.from('profiles').update(update).eq('id', id)
+    loadEmployees()
   }
   async function deleteItem(id) {
     if (!confirm('Delete this item?')) return
@@ -457,6 +513,9 @@ export default function AdminPanel() {
   const typeLabel = { video: 'video', checklist: 'checklist', info: 'info', quiz: 'quiz' }
   if (loading) return <div className="empty-state"><div className="empty-state-icon">Loading...</div></div>
 
+  const pendingEmployees = employees.filter(e => e.status === 'pending')
+  const activeEmployees = employees.filter(e => e.status !== 'pending')
+
   return (
     <div>
       <div className="page-header">
@@ -465,8 +524,10 @@ export default function AdminPanel() {
       </div>
       <div className="flex gap-8 mb-24">
         <button className={`btn ${tab === 'content' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('content')}>Training Content</button>
-        <button className={`btn ${tab === 'employees' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('employees')}>Employees</button>
-        <button className={`btn ${tab === 'settings' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('settings')}>Branding</button>
+        <button className={`btn ${tab === 'employees' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('employees')}>
+          Employees {pendingEmployees.length > 0 && tab !== 'employees' ? `(${pendingEmployees.length} pending)` : ''}
+        </button>
+        {isAdmin && <button className={`btn ${tab === 'settings' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('settings')}>Branding</button>}
       </div>
 
       {tab === 'settings' && <SettingsTab />}
@@ -498,7 +559,7 @@ export default function AdminPanel() {
                       <div style={{ flex: 1, fontSize: 14, fontWeight: selectedModule?.id === mod.id ? 600 : 400 }}>{mod.title}</div>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button className="btn btn-secondary btn-sm" onClick={e => { e.stopPropagation(); setEditTarget(mod); setModal('module') }}>Edit</button>
-                        <button className="btn btn-sm" style={{ background: '#FEE2E2', color: '#C0392B', border: 'none' }} onClick={e => { e.stopPropagation(); deleteModule(mod.id) }}>X</button>
+                        <button className="btn btn-sm" style={{ background: '#FEE2E2', color: '#C0392B', border: 'none' }} onClick={e => { e.stopPropagation(); deleteModule(mod.id) }}>✕</button>
                       </div>
                     </div>
                   ))}
@@ -523,7 +584,7 @@ export default function AdminPanel() {
                       <span className="item-row-type">{typeLabel[item.type] || item.type}</span>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="btn btn-secondary btn-sm" onClick={() => { setEditTarget(item); setModal('item') }}>Edit</button>
-                        <button className="btn btn-sm" style={{ background: '#FEE2E2', color: '#C0392B', border: 'none' }} onClick={() => deleteItem(item.id)}>X</button>
+                        <button className="btn btn-sm" style={{ background: '#FEE2E2', color: '#C0392B', border: 'none' }} onClick={() => deleteItem(item.id)}>✕</button>
                       </div>
                     </div>
                   ))}
@@ -537,34 +598,101 @@ export default function AdminPanel() {
       )}
 
       {tab === 'employees' && (
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">All Employees</div>
-            <button className="btn btn-primary btn-sm" onClick={() => { setEditTarget(null); setModal('invite') }}>+ Invite Employee</button>
-          </div>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Name</th><th>Role</th><th>Track</th><th>Actions</th></tr></thead>
-              <tbody>
-                {employees.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#6B7280', padding: 40 }}>No employees found.</td></tr>}
-                {employees.map(emp => (
-                  <tr key={emp.id}>
-                    <td style={{ fontWeight: 600 }}>{emp.full_name}</td>
-                    <td><span className={`badge ${emp.role === 'admin' ? 'badge-red' : emp.role === 'manager' ? 'badge-amber' : 'badge-navy'}`}>{emp.role}</span></td>
-                    <td>{emp.tracks?.name || <span style={{ color: '#6B7280' }}>Not assigned</span>}</td>
-                    <td><button className="btn btn-secondary btn-sm" onClick={() => { setEditTarget(emp); setModal('employee') }}>Edit</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div>
+          {/* PENDING APPROVALS */}
+          {pendingEmployees.length > 0 && (
+            <div className="card mb-16" style={{ border: '1px solid #FCD34D', background: '#FFFBEB' }}>
+              <div className="card-header" style={{ borderBottom: '1px solid #FCD34D' }}>
+                <div>
+                  <div className="card-title" style={{ color: '#92400E' }}>⏳ Pending Approvals ({pendingEmployees.length})</div>
+                  <div style={{ fontSize: 13, color: '#92400E', marginTop: 2 }}>These employees signed up and are waiting to access training.</div>
+                </div>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Name</th><th>Location</th><th>Assign Track</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {pendingEmployees.map(emp => (
+                      <PendingRow key={emp.id} emp={emp} tracks={tracks} onApprove={approveEmployee} onEdit={() => { setEditTarget(emp); setModal('employee') }} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ACTIVE EMPLOYEES */}
+          <div className="card">
+            <div className="card-header">
+              <div className="card-title">
+                {isManager ? 'Your Location\'s Employees' : 'All Employees'}
+                <span style={{ fontWeight: 400, fontSize: 13, color: '#6B7280', marginLeft: 8 }}>({activeEmployees.length})</span>
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={() => { setEditTarget(null); setModal('invite') }}>+ Invite Employee</button>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Name</th><th>Location</th><th>Role</th><th>Track</th><th>Actions</th></tr></thead>
+                <tbody>
+                  {activeEmployees.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: '#6B7280', padding: 40 }}>No active employees yet.</td></tr>}
+                  {activeEmployees.map(emp => (
+                    <tr key={emp.id}>
+                      <td style={{ fontWeight: 600 }}>{emp.full_name}</td>
+                      <td>{emp.locations?.name || <span style={{ color: '#9CA3AF' }}>—</span>}</td>
+                      <td><span className={`badge ${emp.role === 'admin' ? 'badge-red' : emp.role === 'manager' ? 'badge-amber' : 'badge-navy'}`}>{emp.role}</span></td>
+                      <td>{emp.tracks?.name || <span style={{ color: '#9CA3AF' }}>Not assigned</span>}</td>
+                      <td><button className="btn btn-secondary btn-sm" onClick={() => { setEditTarget(emp); setModal('employee') }}>Edit</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
       {modal === 'module' && <ModuleModal module={editTarget} trackId={selectedTrack?.id} onClose={() => { setModal(null); setEditTarget(null) }} onSave={() => loadModules(selectedTrack.id)} />}
       {modal === 'item' && <ItemModal item={editTarget} moduleId={selectedModule?.id} onClose={() => { setModal(null); setEditTarget(null) }} onSave={() => loadItems(selectedModule.id)} />}
-      {modal === 'employee' && <EmployeeModal employee={editTarget} tracks={tracks} onClose={() => { setModal(null); setEditTarget(null) }} onSave={loadEmployees} />}
-      {modal === 'invite' && <InviteModal tracks={tracks} onClose={() => setModal(null)} onSave={loadEmployees} />}
+      {modal === 'employee' && <EmployeeModal employee={editTarget} tracks={tracks} locations={locations} onClose={() => { setModal(null); setEditTarget(null) }} onSave={loadEmployees} />}
+      {modal === 'invite' && <InviteModal tracks={tracks} locations={locations} onClose={() => setModal(null)} onSave={loadEmployees} />}
     </div>
+  )
+}
+
+// Inline row component for pending approval with track selector
+function PendingRow({ emp, tracks, onApprove, onEdit }) {
+  const [trackId, setTrackId] = useState('')
+  const [approving, setApproving] = useState(false)
+
+  async function handleApprove() {
+    setApproving(true)
+    await onApprove(emp.id, trackId)
+    setApproving(false)
+  }
+
+  return (
+    <tr>
+      <td style={{ fontWeight: 600 }}>{emp.full_name}<div style={{ fontSize: 12, color: '#6B7280', fontWeight: 400 }}>{emp.email}</div></td>
+      <td>{emp.locations?.name || <span style={{ color: '#9CA3AF' }}>—</span>}</td>
+      <td>
+        <select className="form-select" style={{ fontSize: 13, padding: '4px 8px', marginBottom: 0 }} value={trackId} onChange={e => setTrackId(e.target.value)}>
+          <option value="">-- Assign Track --</option>
+          {tracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+      </td>
+      <td>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            className="btn btn-sm"
+            style={{ background: '#D1FAE5', color: '#065F46', border: 'none', fontWeight: 600 }}
+            onClick={handleApprove}
+            disabled={approving}
+          >
+            {approving ? '...' : '✓ Approve'}
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={onEdit}>Edit</button>
+        </div>
+      </td>
+    </tr>
   )
 }
