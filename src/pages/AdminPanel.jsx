@@ -227,19 +227,25 @@ function EmployeeModal({ employee, tracks, locations, onClose, onSave }) {
     track_id: employee?.track_id || '',
     location_id: employee?.location_id || '',
     status: employee?.status || 'active',
+    manager_pin: '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   async function handleSave() {
+    if (form.role === 'manager' && form.manager_pin && (form.manager_pin.length !== 4 || !/^\d{4}$/.test(form.manager_pin))) {
+      setError('PIN must be exactly 4 digits.'); return
+    }
     setSaving(true); setError('')
-    const { error } = await supabase.from('profiles').update({
+    const payload = {
       full_name: form.full_name,
       role: form.role,
       track_id: form.track_id || null,
       location_id: form.location_id || null,
       status: form.status,
-    }).eq('id', employee.id)
+    }
+    if (form.role === 'manager' && form.manager_pin) payload.manager_pin = form.manager_pin
+    const { error } = await supabase.from('profiles').update(payload).eq('id', employee.id)
     setSaving(false)
     if (error) setError(error.message)
     else { onSave(); onClose() }
@@ -276,6 +282,24 @@ function EmployeeModal({ employee, tracks, locations, onClose, onSave }) {
               {tracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
+          {form.role === 'manager' && (
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Manager PIN (4 digits)</label>
+              <input
+                className="form-input"
+                type="text"
+                inputMode="numeric"
+                maxLength={4}
+                autoComplete="off"
+                value={form.manager_pin}
+                onChange={e => setForm(f => ({ ...f, manager_pin: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                placeholder={employee?.manager_pin ? 'Enter new PIN to change' : 'Set a 4-digit PIN'}
+              />
+              <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>
+                Managers use this PIN to unlock employee quizzes. Leave blank to keep the current PIN.
+              </div>
+            </div>
+          )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
@@ -485,7 +509,7 @@ export default function AdminPanel() {
     setModuleItems(data || [])
   }
   async function loadEmployees() {
-    let query = supabase.from('profiles').select('*, tracks(name), locations(name)').order('full_name')
+    let query = supabase.from('profiles').select('*, tracks(name), locations(name), manager_pin').order('full_name')
     // Managers only see their own location
     if (isManager && profile?.location_id) {
       query = query.eq('location_id', profile.location_id)
@@ -639,7 +663,14 @@ export default function AdminPanel() {
                     <tr key={emp.id}>
                       <td style={{ fontWeight: 600 }}>{emp.full_name}</td>
                       <td>{emp.locations?.name || <span style={{ color: '#9CA3AF' }}>—</span>}</td>
-                      <td><span className={`badge ${emp.role === 'admin' ? 'badge-red' : emp.role === 'manager' ? 'badge-amber' : 'badge-navy'}`}>{emp.role}</span></td>
+                      <td>
+                        <span className={`badge ${emp.role === 'admin' ? 'badge-red' : emp.role === 'manager' ? 'badge-amber' : 'badge-navy'}`}>{emp.role}</span>
+                        {emp.role === 'manager' && (
+                          <span style={{ fontSize: 11, marginLeft: 6, color: emp.manager_pin ? '#27AE60' : '#9CA3AF' }}>
+                            {emp.manager_pin ? '🔐 PIN set' : '⚠️ No PIN'}
+                          </span>
+                        )}
+                      </td>
                       <td>{emp.tracks?.name || <span style={{ color: '#9CA3AF' }}>Not assigned</span>}</td>
                       <td><button className="btn btn-secondary btn-sm" onClick={() => { setEditTarget(emp); setModal('employee') }}>Edit</button></td>
                     </tr>

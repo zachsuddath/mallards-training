@@ -3,6 +3,57 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 
+// Custom PIN pad — no <input>, so browsers can't save or autofill the manager PIN
+function PinPad({ onSubmit, error, loading }) {
+  const [digits, setDigits] = useState([])
+
+  // Reset digits when an error comes back
+  useEffect(() => { if (error) setDigits([]) }, [error])
+
+  function tap(d) {
+    if (loading || digits.length >= 4) return
+    const next = [...digits, d]
+    setDigits(next)
+    if (next.length === 4) onSubmit(next.join(''))
+  }
+  function del() { if (!loading) setDigits(d => d.slice(0, -1)) }
+
+  const btn = (label, action, extra = {}) => (
+    <button
+      onClick={action}
+      disabled={loading}
+      style={{
+        width: 64, height: 64, borderRadius: 12, fontSize: 20, fontWeight: 600,
+        background: '#F3F4F6', border: '1px solid #E5E7EB', cursor: loading ? 'not-allowed' : 'pointer',
+        color: '#1B3A6B', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        userSelect: 'none', ...extra
+      }}
+    >{label}</button>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 14 }}>
+        {[0, 1, 2, 3].map(i => (
+          <div key={i} style={{
+            width: 14, height: 14, borderRadius: '50%',
+            background: i < digits.length ? '#1B3A6B' : '#D1D5DB',
+            transition: 'background 0.15s'
+          }} />
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 64px)', gap: 8 }}>
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => btn(n, () => tap(String(n))))}
+        <div />
+        {btn('0', () => tap('0'))}
+        {btn('⌫', del, { fontSize: 16, color: '#6B7280' })}
+      </div>
+      {loading && <div style={{ fontSize: 13, color: '#6B7280' }}>Checking…</div>}
+      {error && <div style={{ fontSize: 13, color: '#C0392B' }}>{error}</div>}
+    </div>
+  )
+}
+
 export default function TrainingModule() {
   const { moduleId } = useParams()
   const { profile } = useAuth()
@@ -17,7 +68,6 @@ export default function TrainingModule() {
   const [quizSubmitted, setQuizSubmitted] = useState({})
   const [quizScores, setQuizScores] = useState({})
   const [pinUnlocked, setPinUnlocked] = useState(new Set())
-  const [pinInput, setPinInput] = useState({})
   const [pinError, setPinError] = useState({})
   const [pinLoading, setPinLoading] = useState({})
 
@@ -78,9 +128,7 @@ export default function TrainingModule() {
     setPinUnlocked(s => { const n = new Set(s); n.delete(itemId); return n })
   }
 
-  async function verifyPin(itemId) {
-    const pin = pinInput[itemId] || ''
-    if (pin.length !== 4) { setPinError(e => ({ ...e, [itemId]: 'Enter a 4-digit PIN.' })); return }
+  async function verifyPin(itemId, pin) {
     setPinLoading(l => ({ ...l, [itemId]: true }))
     setPinError(e => ({ ...e, [itemId]: '' }))
     const { data, error } = await supabase.rpc('verify_manager_pin', {
@@ -92,7 +140,6 @@ export default function TrainingModule() {
       setPinError(e => ({ ...e, [itemId]: 'Incorrect PIN. Ask your manager to try again.' }))
     } else {
       setPinUnlocked(s => new Set([...s, itemId]))
-      setPinInput(p => ({ ...p, [itemId]: '' }))
     }
   }
 
@@ -199,25 +246,14 @@ export default function TrainingModule() {
                 <div style={{ padding: '24px', textAlign: 'center', borderTop: '1px solid #E5E7EB' }}>
                   <div style={{ fontSize: 32, marginBottom: 8 }}>&#x1F512;</div>
                   <div style={{ fontWeight: 600, fontSize: 15, color: '#1B3A6B', marginBottom: 4 }}>Manager PIN Required</div>
-                  <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
-                    Ask your manager to enter their PIN to unlock this quiz.
+                  <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 20 }}>
+                    Hand the device to your manager — they tap their PIN below.
                   </div>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center' }}>
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={4}
-                      placeholder="&#x2022;&#x2022;&#x2022;&#x2022;"
-                      value={pinInput[item.id] || ''}
-                      onChange={e => setPinInput(p => ({ ...p, [item.id]: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
-                      onKeyDown={e => e.key === 'Enter' && verifyPin(item.id)}
-                      style={{ width: 100, textAlign: 'center', letterSpacing: 6, fontSize: 18, padding: '8px 12px', border: '2px solid #E5E7EB', borderRadius: 8, outline: 'none' }}
-                    />
-                    <button className="btn btn-primary" onClick={() => verifyPin(item.id)} disabled={pinLoading[item.id]}>
-                      {pinLoading[item.id] ? 'Checking...' : 'Unlock'}
-                    </button>
-                  </div>
-                  {pinError[item.id] && <div style={{ marginTop: 10, fontSize: 13, color: '#C0392B' }}>{pinError[item.id]}</div>}
+                  <PinPad
+                    onSubmit={pin => verifyPin(item.id, pin)}
+                    error={pinError[item.id]}
+                    loading={pinLoading[item.id]}
+                  />
                 </div>
               )}
 
