@@ -160,6 +160,34 @@ export default function TrainingModule() {
     }
   }
 
+  // Replace any PDF iframes/embeds in info content with a safe "View PDF" button.
+  // Without this, embedded PDFs take over the screen and block employees from continuing.
+  function sanitizeInfoContent(html) {
+    if (!html) return ''
+    const el = document.createElement('div')
+    el.innerHTML = html
+    el.querySelectorAll('iframe, embed, object').forEach(node => {
+      const src = node.getAttribute('src') || node.getAttribute('data') || ''
+      if (src.toLowerCase().includes('.pdf') || node.getAttribute('type') === 'application/pdf') {
+        const a = document.createElement('a')
+        a.href = src
+        a.target = '_blank'
+        a.rel = 'noopener noreferrer'
+        a.style.cssText = 'display:inline-flex;align-items:center;gap:8px;padding:10px 18px;background:#1B3A6B;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;'
+        a.textContent = '📄 View PDF'
+        node.replaceWith(a)
+      }
+    })
+    // Make any raw PDF links open in a new tab
+    el.querySelectorAll('a[href]').forEach(a => {
+      if ((a.getAttribute('href') || '').toLowerCase().endsWith('.pdf')) {
+        a.setAttribute('target', '_blank')
+        a.setAttribute('rel', 'noopener noreferrer')
+      }
+    })
+    return el.innerHTML
+  }
+
   if (loading) return <div className="empty-state"><div className="empty-state-icon">&#x23F3;</div>Loading module...</div>
 
   const currentIdx = allModules.findIndex(m => m.id === moduleId)
@@ -230,7 +258,7 @@ export default function TrainingModule() {
               <div key={item.id} className="card">
                 <div className="card-header"><div className="card-title">{item.title}</div></div>
                 <div className="card-body">
-                  <div className="info-block ql-content" dangerouslySetInnerHTML={{ __html: item.content }} />
+                  <div className="info-block ql-content" dangerouslySetInnerHTML={{ __html: sanitizeInfoContent(item.content) }} />
                 </div>
               </div>
             ))}
